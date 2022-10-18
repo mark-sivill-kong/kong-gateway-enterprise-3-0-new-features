@@ -31,6 +31,9 @@ From the shell where ```KONG_LICENSE_DATA``` and ```HONEYCOMB_API_KEY``` are set
 ```
 docker-compose up
 ```
+Start up time is approximately 3-5 mins on modern pc with 8 CPUs and 16GB RAM. To check if everything has started correctly
+* Login to [Kong Manager](http://localhost:8002/) with username ```kong_admin``` and password ```kong_admin```, navigate to [Kong Manager Workspaces](http://localhost:8002/overview) then ensure the License expiration is above 1 day
+* Login to [honeycomb.io](https://honeycomb.io) navigate to the "Home" screen, scroll down the page to "Recent Traces" and look for traces for ```GET /plugin-order/default``` and ```GET /plugin-order/changed```
 
 ## Third party assets
 
