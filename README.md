@@ -47,7 +47,7 @@ Start up time is approximately 3-5 mins on modern pc with 8 CPUs and 16GB RAM. T
 
 ## Stopping
 
-From shell where docker-compose is running ```control-c``` and run the commands
+From the shell where docker-compose is running type ```Control-c``` and run the commands
 ```
 docker-compose down
 docker volume prune -f
