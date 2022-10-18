@@ -24,7 +24,6 @@ This project has been only been tested on localhost machine setups.
 ```
 docker-compose build --no-cache
 ```
-
 ## Running
 
 From the shell where ```KONG_LICENSE_DATA``` and ```HONEYCOMB_API_KEY``` are setup, navigate to the directory where ```docker-compose.yml``` is located and run the command
@@ -44,7 +43,15 @@ Start up time is approximately 3-5 mins on modern pc with 8 CPUs and 16GB RAM. T
 * [Websockets server](http://localhost:9898)
 * [Hashicorp Vault](http://localhost:8200) method ```Token``` token ```Token```
 * [OpenID Connect endpoint](http://localhost:8000/secret/oidc) username ```kong3``` password ```kong3```
-* [Keycoak](http://localhost:8080) username ```admin``` password ```admin``` where OpenID Connect user ```kong3``` is configured
+* [Keycloak](http://localhost:8080) username ```admin``` password ```admin``` where OpenID Connect user ```kong3``` is configured
+
+## Stopping
+
+From shell where docker-compose is running ```control-c``` and run the commands
+```
+docker-compose down
+docker volume prune -f
+```
 
 ## Third party assets
 
