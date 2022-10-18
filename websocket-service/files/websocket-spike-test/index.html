@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebSocket Tester</title>
+    <script>
+      const port = "8000";
+    </script>
+  </head>
+  <body></body>
+
+  <form id="ws" style="float:left; width: 50%">
+    <div id="buttons"></div>
+
+    <br/>
+
+    <textarea rows=30 cols=100 id="input"></textarea><br/>
+    <input type="submit" value="Send"/>
+  </form>
+
+  <ul id="events" style="float:left"></ul>
+
+  <script>
+
+    let endpoint = "validate";
+    const l = document.getElementById('events');
+    const t = document.getElementById('input');
+    const f = document.getElementById('ws');
+
+    function endpointButton(name, payload) {
+      const btn = htmlToElement('<button>' + name + '</button>');
+      btn.addEventListener('click', function (e) {
+        e.preventDefault()
+        if (ws) {
+          endpoint = payload;
+          ws.close();
+        }
+      })
+      document
+        .getElementById("buttons")
+        .appendChild(btn)
+    }
+
+    endpointButton('Switch to /validate', 'validate')
+    endpointButton('Switch to /size', 'size')
+
+    function button(name, payload) {
+      const btn = htmlToElement('<button>' + name + '</button>');
+      btn.addEventListener('click', function (e) {
+        e.preventDefault()
+        t.value = JSON.stringify(payload);
+      })
+
+      document
+        .getElementById("buttons")
+        .appendChild(btn)
+
+    }
+
+    button('Schema: Valid', {"hello": "world"});
+    button('Schema: Invalid', {"oh": "no"});
+    button('Size: 64 Bytes', {
+      "hello": "world",
+      "another": "looooooooooooooooooooooooooooooong"
+    });
+    button('Size: 65 Bytes', {
+      "hello": "world",
+      "another": "looooooooooooooooooooooooooooooong!"
+    });
+
+    f.addEventListener('submit', function (e) {
+      e.preventDefault();
+      l.appendChild(htmlToElement('<li><strong>Client: </strong>' + t.value + '</li>'))
+      ws.send(t.value);
+      t.value = "";
+    })
+
+    let ws;
+    function connect() {
+      const url = 'ws://localhost:' + port + '/' + endpoint;
+      ws = new WebSocket(url);
+
+      console.info("Websocket = ", ws);
+
+      ws.onopen = function () {
+        l.appendChild(htmlToElement('<li><strong>Event: </strong>Connection opened (' + url + ')</li>'))
+      };
+
+      ws.onmessage = function (e) {
+        l.appendChild(htmlToElement('<li><strong>Server: </strong>' + e.data + '</li>'))
+      };
+
+      ws.onclose = function (e) {
+        l.appendChild(htmlToElement('<li><strong>Event: </strong>Connection closed. Reconnecting</li>'))
+        setTimeout(connect, 500);
+      };
+    }
+
+    connect();
+
+    function htmlToElement(html) {
+      var template = document.createElement('template');
+      template.innerHTML = html;
+      return template.content.firstChild;
+    }
+  </script>
+</html>

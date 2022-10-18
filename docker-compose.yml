@@ -1,0 +1,292 @@
+#
+# Designed to spin up an local (localhost) ephemeral Kong Gateway Enterprise 3.0
+# for demonstration purposes for some of the new 3.0 features only not for production
+#
+# Enabled - 
+#   kong which isdatabase backed
+#   seperate kong control and data planes
+#   manager with Role Based Access Control)
+#   developer portal (with workspaces)
+#
+# Demonstrating -
+#  secrets
+#  opentelemetry
+#  plugin ordering
+#  websockets
+#
+# ensure the following environment variables have been set -
+#  KONG_LICENSE_DATA
+#  HONEYCOMB_API_KEY
+#
+# useful urls -
+#   http://localhost:8002/kong3/dashboard - ( kong_admin / kong_admin ) - Kong Manager 
+#   http://localhost:8080 - ( admin / admin ) - keycloak for OpenID Connect user kong3
+#   http://localhost:9898 - websockets tester web client/server
+#   http://localhost:8200 - ( Token / Token ) Hashicorp vault for secrets
+#   http://honeycomb.io - view opentelemetery data
+#   http://localhost:8000/plugin-order/default - plugin ordering route
+#   http://localhost:8000/plugin-order/changed - plugin ordering route
+#   http://localhost:8000/secret/oidc - secrets for OpenID Connect ( kong3 / kong3 )
+#
+# created by Mark Sivill - October 2022
+#
+
+version: '3.9'
+
+networks:
+  kong30-net:
+
+volumes:
+  kong-certificates:                                                         # for hybrid setup
+
+services:
+
+  #
+  # clear out any potential old certificates ( for hybrid communication )
+  # so certificates can be generated later without any issues
+  #
+  kong-gateway-generate-certificates-pre-setup:
+    image: docker.io/kong/kong-gateway:3.0
+    command: bash -c "rm -f /home/kong/cluster.crt && rm -f /home/kong/cluster.key"
+    networks:
+      - kong30-net
+    volumes:
+      - kong-certificates:/home/kong
+
+  #
+  # generate keys for kong control and data planes 
+  # if a clean volume or empty directory hasn't been created container will error on exit
+  # 
+  kong-gateway-generate-certificates:
+    image: docker.io/kong/kong-gateway:3.0
+    depends_on:
+      kong-gateway-generate-certificates-pre-setup:
+        condition: service_completed_successfully
+    command: "kong hybrid gen_cert /home/kong/cluster.crt /home/kong/cluster.key --vv"
+    networks:
+      - kong30-net
+    volumes:
+      - kong-certificates:/home/kong
+
+  kong-database:
+    image: docker.io/library/postgres:15.0
+    depends_on:
+      kong-gateway-generate-certificates:
+        condition: service_completed_successfully
+    environment:
+      - POSTGRES_DB=kong
+      - POSTGRES_USER=kong
+      - POSTGRES_PASSWORD=kong-password
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "kong"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 3
+    networks:
+      - kong30-net
+
+  kong-gateway-enterprise-control-plane-ephemeral-bootstrap:
+    image: docker.io/kong/kong-gateway:3.0
+    command: "kong migrations bootstrap"
+    depends_on:
+      kong-database:
+        condition: service_healthy
+    environment:
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=kong-database
+      - KONG_PG_USER=kong
+      - KONG_PG_PASSWORD=kong-password
+      - KONG_PASSWORD=kong_admin                                             # kong admin password initial setup
+    networks:
+      - kong30-net
+
+  kong-gateway-enterprise-control-plane:
+    image: docker.io/kong/kong-gateway:3.0
+    depends_on:
+      kong-database:
+        condition: service_healthy
+      kong-gateway-enterprise-control-plane-ephemeral-bootstrap:
+        condition: service_completed_successfully
+      vault:
+        condition: service_started
+    environment:
+      - KONG_LICENSE_DATA=${KONG_LICENSE_DATA}                               # license key
+      - KONG_ROLE=control_plane
+      - KONG_CLUSTER_CERT=/home/kong/certificates/cluster.crt
+      - KONG_CLUSTER_CERT_KEY=/home/kong/certificates/cluster.key
+      - KONG_LOG_LEVEL=debug
+      - KONG_DATABASE=postgres
+      - KONG_PG_HOST=kong-database
+      - KONG_PG_PASSWORD=kong-password
+      - KONG_ADMIN_ACCESS_LOG=/dev/stdout                                    # admin logs
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr                                     # admin logs
+      - KONG_ADMIN_GUI_ACCESS_LOG=/dev/stdout                                # manager gui logs
+      - KONG_ADMIN_GUI_ERROR_LOG=/dev/stderr                                 # manager gui logs
+      - KONG_STATUS_LISTEN=0.0.0.0:8010                                      # put metrics on another port
+      - KONG_AUDIT_LOG=on                                                    # capture config changes
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001                                       # admin api
+      - KONG_ADMIN_GUI_URL=http://localhost:8002                             # kong manager
+      - KONG_PORTAL=on
+      - KONG_PORTAL_GUI_PROTOCOL=http
+      - KONG_PORTAL_GUI_HOST=localhost:8003
+      - KONG_ENFORCE_RBAC=on                                                 # enable manager RBAC
+      - KONG_ADMIN_GUI_AUTH=basic-auth
+      - KONG_ADMIN_GUI_SESSION_CONF={"cookie_name":"kong-manager-cookie","secret":"a-random-secret","storage":"kong","cookie_secure":false}
+      - KONG_CLUSTER_TELEMETRY_LISTEN=0.0.0.0:8006
+    ports:
+      - 8001:8001                                                            # gateway api
+      - 8002:8002                                                            # manager
+      - 8003:8003                                                            # dev portal
+      - 8004:8004                                                            # dev portal api
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    networks:
+      - kong30-net
+    volumes:
+      - kong-certificates:/home/kong/certificates
+
+  kong-gateway-enterprise-data-plane:
+    image: docker.io/kong/kong-gateway:3.0
+    depends_on:
+      post-setup:
+        condition: service_completed_successfully
+    environment:
+      - KONG_LICENSE_DATA=${KONG_LICENSE_DATA}                               # license key
+      - KONG_ROLE=data_plane
+      - KONG_DATABASE=off
+      - KONG_PROXY_LISTEN=0.0.0.0:8000                                       # proxy gateway port
+      - KONG_CLUSTER_CONTROL_PLANE=kong-gateway-enterprise-control-plane:8005
+      - KONG_CLUSTER_TELEMETRY_ENDPOINT=kong-gateway-enterprise-control-plane:8006
+      - KONG_CLUSTER_CERT=/home/kong/certificates/cluster.crt
+      - KONG_CLUSTER_CERT_KEY=/home/kong/certificates/cluster.key
+      - KONG_LOG_LEVEL=debug
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout                                    # proxy logs
+      - KONG_PROXY_ERROR_LOG=/dev/stderr                                     # proxy logs
+      - KONG_STATUS_LISTEN=0.0.0.0:8010                                      # put metrics on another port
+      - KONG_OPENTELEMETRY_TRACING=all                                       # enable opentelemetry
+      - KONG_OPENTELEMETRY_TRACING_SAMPLING_RATE=1.0                         # enable opentelemetry
+      - KONG_VAULT_HCV_PROTOCOL=http
+      - KONG_VAULT_HCV_HOST=vault
+      - KONG_VAULT_HCV_PORT=8200
+      - KONG_VAULT_HCV_MOUNT=kong-secrets
+      - KONG_VAULT_HCV_KV=v2
+      - KONG_VAULT_HCV_TOKEN=Token
+    ports:
+      - 8000:8000                                                            # proxy gateway port
+      - 8010:8010                                                            # metrics endpoint
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    networks:
+      - kong30-net
+    volumes:
+      - kong-certificates:/home/kong/certificates
+
+  #
+  # hashicorp vault for secrets
+  #
+  vault:
+    image: docker.io/library/vault:1.12.0
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=Token
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+      - VAULT_ADDR=http://0.0.0.0:8200                                       # to enable command line to be used against http
+    cap_add:
+          - IPC_LOCK
+    ports:
+      - 8200:8200                                                            # vault portal
+    networks:
+      - kong30-net
+
+  #
+  # keycloak running in dev mode without external database
+  #
+  keycloak:
+    build: 
+      context: ./keycloak
+    command: "start-dev --import-realm"                                      # create realms/users via import flag
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+#      - KC_LOG_LEVEL=DEBUG
+      - KC_HOSTNAME=localhost                                                # map for different external hostname outside of docker-compose network
+    ports:
+      - 8080:8080                                                            # keycloak portal
+    networks:
+      - kong30-net
+
+  #
+  # post set up scripts for vault and kong gateway
+  #
+  post-setup:
+    build: ./demo-utility
+    environment:
+      - KONG_GATEWAY_API_URL=http://kong-gateway-enterprise-control-plane:8001
+      - KONG_PASSWORD=kong_admin                                             # kong admin password (RBAC enabled)
+      - VAULT_DEV_ROOT_TOKEN_ID=Token
+      - VAULT_API_URL=http://vault:8200
+      - VAULT_KONG_OAUTH_CLIENT_ID=kong3-client-id                           # values that are put into vault
+      - VAULT_KONG_OAUTH_CLIENT_SECRET=uQV39myf7re5kHj56Wt0oGR9gvaDuNqU      # values that are put into vault
+      - HONEYCOMB_API_KEY=${HONEYCOMB_API_KEY}                               # honeycomb api key for open telemetry
+    entrypoint: [ "sh", "-c", "/home/deckuser/scripts/post-setup.sh"]        # override default entrypoint
+    depends_on:
+      kong-gateway-enterprise-control-plane:
+        condition: service_healthy
+      vault:
+        condition: service_started
+    networks:
+      - kong30-net
+
+  #
+  # container thats allows for adhoc interactions using Kong tooling
+  # connect to a running container to use
+  #
+  kong-gateway-commandline-tools:
+    build: ./demo-utility
+    environment:
+      - KONG_GATEWAY_API_URL=http://kong-gateway-enterprise-control-plane:8001
+      - KONG_PASSWORD=kong_admin                                             # kong admin password (RBAC enabled)
+    entrypoint: [ "sh", "-c", "/home/deckuser/scripts/loop.sh"]              # override default entrypoint
+    depends_on:
+      kong-gateway-enterprise-control-plane:
+        condition: service_healthy
+    networks:
+      - kong30-net
+       
+  #
+  # generate web traffic for kong proxy
+  #     
+  traffic:
+    build: ./demo-utility
+    environment:
+      - KONG_PROXY_URL=http://kong-gateway-enterprise-data-plane:8000
+    entrypoint: [ "sh", "-c", "/home/deckuser/scripts/generate-traffic.sh"]  # override default entrypoint
+    depends_on:
+      post-setup:
+        condition: service_completed_successfully
+      kong-gateway-enterprise-data-plane:
+        condition: service_healthy
+    networks:
+      - kong30-net   
+ 
+  #
+  # web client to test websockets functionality
+  #
+  websocket-service:
+    build: ./websocket-service
+    depends_on:
+      kong-gateway-enterprise-data-plane:
+        condition: service_healthy
+    ports:
+      - 9898:9898                                                            # web client tester port
+    networks:
+      - kong30-net
+
