@@ -9,12 +9,12 @@
 
 #
 # vault / secrets post setup for OpenID Connect
-# accessed within Kong using {vault://hcv/oauth-client/client-id}
-# and {vault://hcv/oauth-client/client-secret}
+# accessed within Kong using {vault://hcv/openid-connect/client-id}
+# and {vault://hcv/openid-connect/client-secret}
 #
 curl --header X-Vault-Token:${VAULT_DEV_ROOT_TOKEN_ID} --request POST --data '{"type": "kv","options": {"version": "2"}}' ${VAULT_API_URL}/v1/sys/mounts/kong-secrets
 VAULT_SECRET_OAUTH_DATA="{\"data\":{ \"client-id\": \"$VAULT_KONG_OAUTH_CLIENT_ID\", \"client-secret\": \"$VAULT_KONG_OAUTH_CLIENT_SECRET\"}}"
-curl --header X-Vault-Token:${VAULT_DEV_ROOT_TOKEN_ID} --request POST --data "${VAULT_SECRET_OAUTH_DATA}" ${VAULT_API_URL}/v1/kong-secrets/data/oauth-client
+curl --header X-Vault-Token:${VAULT_DEV_ROOT_TOKEN_ID} --request POST --data "${VAULT_SECRET_OAUTH_DATA}" ${VAULT_API_URL}/v1/kong-secrets/data/openid-connect
 
 #
 # check honeycomb api key environment variable

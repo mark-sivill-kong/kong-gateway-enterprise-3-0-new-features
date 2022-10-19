@@ -287,10 +287,10 @@ services:
         - query
         - body
         client_id:
-        - '{vault://hcv/oauth-client/client-id}'
+        - '{vault://hcv/openid-connect/client-id}'
         client_jwk: null
         client_secret:
-        - '{vault://hcv/oauth-client/client-secret}'
+        - '{vault://hcv/openid-connect/client-secret}'
         consumer_by:
         - username
         - custom_id
