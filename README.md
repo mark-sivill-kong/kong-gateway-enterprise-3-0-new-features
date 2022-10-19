@@ -13,7 +13,7 @@ This project has been only been tested on localhost machine setups.
 
 * This github project copied to the localhost machine
 * Working versions of docker and docker-compose on the localhost machine
-* A [honeycomb.io](https://honeycomb.io) account and assoicated API key for sending opentelemetry data to the account
+* A [honeycomb.io](https://honeycomb.io) account and associated API key for sending opentelemetry data to the account
 * A Kong enterprise license key
 
 ## Pre-setup
