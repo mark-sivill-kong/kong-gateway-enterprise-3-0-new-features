@@ -1,7 +1,7 @@
 # Kong Gateway Enterprise 3.0 new features
 
 A docker-compose project which shows the following new Kong Gateway Enterprise 3.0 features
-* manager web interface
+* manager web interface improvements
 * open telemetry using [honeycomb.io](https://honeycomb.io)
 * websocket plugins
 * plugin ordering
