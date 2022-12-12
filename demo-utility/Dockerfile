@@ -1,4 +1,4 @@
-FROM docker.io/kong/deck:v1.15.1
+FROM docker.io/kong/deck:v1.16.1
 
 LABEL maintainer="Mark Sivill - Kong"
 LABEL description="Docker demo utility image that is used for post setup, generating traffic, and provding access to kong tooling"

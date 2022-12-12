@@ -1,43 +1,40 @@
 # Kong Gateway Enterprise 3.0 new features
 
 A docker-compose project which shows the following new Kong Gateway Enterprise 3.0 features
-* manager web interface improvements
-* open telemetry using [honeycomb.io](https://honeycomb.io)
+* manager web interface
+* open telemetry using [Jaeger](https://www.jaegertracing.io/)
 * websocket plugins
 * plugin ordering
 * secrets using [Hashicorp Vault](https://www.vaultproject.io/)
 
-This project has been only been tested on localhost machine setups.
+This project has been only been tested on localhost machine setups. Built for demonstration purposes only not to be used in production.
 
 ## Prerequisites
 
 * This github project copied to the localhost machine
 * Working versions of docker and docker-compose on the localhost machine
-* A [honeycomb.io](https://honeycomb.io) account and associated API key for sending opentelemetry data to the account
 * A Kong enterprise license key
 
 ## Pre-setup
 
 * Create the environment variable ```KONG_LICENSE_DATA``` with the value of the Kong license key
-* Create the environment variable ```HONEYCOMB_API_KEY``` with the value of the honeycomb.io api key
 * build the project by navigating to the directory where ```docker-compose.yml``` is located and run the command
 ```
 docker-compose build --no-cache
 ```
 ## Running
 
-From the shell where ```KONG_LICENSE_DATA``` and ```HONEYCOMB_API_KEY``` are setup, navigate to the directory where ```docker-compose.yml``` is located and run the command
+From the shell where ```KONG_LICENSE_DATA``` is setup, navigate to the directory where ```docker-compose.yml``` is located and run the command
 ```
 docker-compose up
 ```
 Start up time is approximately 3-5 mins on modern pc with 8 CPUs and 16GB RAM. To check if everything has started correctly
 * Login to [Kong Manager](http://localhost:8002/) with username ```kong_admin``` and password ```kong_admin```, navigate to [Kong Manager Workspaces](http://localhost:8002/overview) then ensure the "License expiration" is above 1 day
-* Login to [honeycomb.io](https://honeycomb.io) navigate to the "Home" screen, scroll down the page to "Recent Traces" and look for traces for ```GET /plugin-order/default``` and ```GET /plugin-order/changed```
 
 ## Useful demonstration links
 
 * [Kong Manager - Kong3 workspace](http://localhost:8002/kong3/dashboard) username ```kong_admin``` password ```kong_admin``` 
-* [honeycomb.io](https://honeycomb.io) to view opentelemetery data in "Home"
+* [Jaeger](http://localhost:16686) to view Kong opentelemetery data, ensure kong is in the dropdown
 * [Default plugin order endpoint](http://localhost:8000/plugin-order/default)
 * [Changed plugin order endpoint](http://localhost:8000/plugin-order/changed)
 * [Websockets server](http://localhost:9898)

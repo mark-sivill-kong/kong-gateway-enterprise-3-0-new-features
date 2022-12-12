@@ -16,13 +16,6 @@ curl --header X-Vault-Token:${VAULT_DEV_ROOT_TOKEN_ID} --request POST --data '{"
 VAULT_SECRET_OAUTH_DATA="{\"data\":{ \"client-id\": \"$VAULT_KONG_OAUTH_CLIENT_ID\", \"client-secret\": \"$VAULT_KONG_OAUTH_CLIENT_SECRET\"}}"
 curl --header X-Vault-Token:${VAULT_DEV_ROOT_TOKEN_ID} --request POST --data "${VAULT_SECRET_OAUTH_DATA}" ${VAULT_API_URL}/v1/kong-secrets/data/openid-connect
 
-#
-# check honeycomb api key environment variable
-#
-if [[ -z "${HONEYCOMB_API_KEY}" ]]; then
-  echo "`date` exiting as HONEYCOMB_API_KEY environment variable not found"
-  exit 1
-fi
 
 #
 # kong post setup
@@ -59,18 +52,6 @@ echo "`date` about to deck sync"
 
 deck sync --workspace default --state default.yaml --kong-addr ${KONG_GATEWAY_API_URL} ${DECK_RBAC_HEADER}
 deck sync --workspace kong3 --state kong3.yaml --kong-addr ${KONG_GATEWAY_API_URL} ${DECK_RBAC_HEADER}
-
-#
-# dynamically add opentelemetery
-#
-result=$(curl -X POST ${CURL_RBAC_HEADER} ${KONG_GATEWAY_API_URL}/kong3/plugins \
-    --data "name=opentelemetry"  \
-    --data "config.endpoint=https://api.honeycomb.io/v1/traces" \
-    --data "config.headers.x-honeycomb-team=${HONEYCOMB_API_KEY}" \
-    --data "config.batch_span_count=200" \
-    --data "config.batch_flush_delay=3"
-)
-echo "`date` - added opentelemetry - ${result}"
 
 #
 # bump default workspace to enable it from browser

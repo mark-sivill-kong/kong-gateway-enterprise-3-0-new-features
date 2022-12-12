@@ -16,14 +16,13 @@
 #
 # ensure the following environment variables have been set -
 #  KONG_LICENSE_DATA
-#  HONEYCOMB_API_KEY
 #
 # useful urls -
 #   http://localhost:8002/kong3/dashboard - ( kong_admin / kong_admin ) - Kong Manager 
 #   http://localhost:8080 - ( admin / admin ) - keycloak for OpenID Connect user kong3
 #   http://localhost:9898 - websockets tester web client/server
 #   http://localhost:8200 - ( Token / Token ) Hashicorp vault for secrets
-#   http://honeycomb.io - view opentelemetery data
+#   http://localhost:16686 - view opentelemetery via Jaeger
 #   http://localhost:8000/plugin-order/default - plugin ordering route
 #   http://localhost:8000/plugin-order/changed - plugin ordering route
 #   http://localhost:8000/secret/oidc - secrets for OpenID Connect ( kong3 / kong3 )
@@ -33,46 +32,16 @@
 
 version: '3.9'
 
-networks:
-  kong30-net:
+name:
+  mark-sivill-kong-3                                                         # project name to avoid clashing with other similiar named containers
 
-volumes:
-  kong-certificates:                                                         # for hybrid setup
+networks:
+  kong31-net:
 
 services:
 
-  #
-  # clear out any potential old certificates ( for hybrid communication )
-  # so certificates can be generated later without any issues
-  #
-  kong-gateway-generate-certificates-pre-setup:
-    image: docker.io/kong/kong-gateway:3.0
-    command: bash -c "rm -f /home/kong/cluster.crt && rm -f /home/kong/cluster.key"
-    networks:
-      - kong30-net
-    volumes:
-      - kong-certificates:/home/kong
-
-  #
-  # generate keys for kong control and data planes 
-  # if a clean volume or empty directory hasn't been created container will error on exit
-  # 
-  kong-gateway-generate-certificates:
-    image: docker.io/kong/kong-gateway:3.0
-    depends_on:
-      kong-gateway-generate-certificates-pre-setup:
-        condition: service_completed_successfully
-    command: "kong hybrid gen_cert /home/kong/cluster.crt /home/kong/cluster.key --vv"
-    networks:
-      - kong30-net
-    volumes:
-      - kong-certificates:/home/kong
-
   kong-database:
     image: docker.io/library/postgres:15.0
-    depends_on:
-      kong-gateway-generate-certificates:
-        condition: service_completed_successfully
     environment:
       - POSTGRES_DB=kong
       - POSTGRES_USER=kong
@@ -84,10 +53,11 @@ services:
       start_period: 30s
       retries: 3
     networks:
-      - kong30-net
+      - kong31-net
 
   kong-gateway-enterprise-control-plane-ephemeral-bootstrap:
-    image: docker.io/kong/kong-gateway:3.0
+    build:
+      context: ./kong-gateway
     command: "kong migrations bootstrap"
     depends_on:
       kong-database:
@@ -99,10 +69,11 @@ services:
       - KONG_PG_PASSWORD=kong-password
       - KONG_PASSWORD=kong_admin                                             # kong admin password initial setup
     networks:
-      - kong30-net
+      - kong31-net
 
   kong-gateway-enterprise-control-plane:
-    image: docker.io/kong/kong-gateway:3.0
+    build:
+      context: ./kong-gateway
     depends_on:
       kong-database:
         condition: service_healthy
@@ -146,12 +117,11 @@ services:
       retries: 3
       start_period: 60s
     networks:
-      - kong30-net
-    volumes:
-      - kong-certificates:/home/kong/certificates
+      - kong31-net
 
   kong-gateway-enterprise-data-plane:
-    image: docker.io/kong/kong-gateway:3.0
+    build:
+      context: ./kong-gateway
     depends_on:
       post-setup:
         condition: service_completed_successfully
@@ -170,12 +140,6 @@ services:
       - KONG_STATUS_LISTEN=0.0.0.0:8010                                      # put metrics on another port
       - KONG_OPENTELEMETRY_TRACING=all                                       # enable opentelemetry
       - KONG_OPENTELEMETRY_TRACING_SAMPLING_RATE=1.0                         # enable opentelemetry
-      - KONG_VAULT_HCV_PROTOCOL=http
-      - KONG_VAULT_HCV_HOST=vault
-      - KONG_VAULT_HCV_PORT=8200
-      - KONG_VAULT_HCV_MOUNT=kong-secrets
-      - KONG_VAULT_HCV_KV=v2
-      - KONG_VAULT_HCV_TOKEN=Token
     ports:
       - 8000:8000                                                            # proxy gateway port
       - 8010:8010                                                            # metrics endpoint
@@ -186,15 +150,13 @@ services:
       retries: 3
       start_period: 60s
     networks:
-      - kong30-net
-    volumes:
-      - kong-certificates:/home/kong/certificates
+      - kong31-net
 
   #
-  # hashicorp vault for secrets
+  # hashicorp vault for secrets running in dev mode
   #
   vault:
-    image: docker.io/library/vault:1.12.0
+    image: docker.io/library/vault:1.12.2
     environment:
       - VAULT_DEV_ROOT_TOKEN_ID=Token
       - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
@@ -204,7 +166,7 @@ services:
     ports:
       - 8200:8200                                                            # vault portal
     networks:
-      - kong30-net
+      - kong31-net
 
   #
   # keycloak running in dev mode without external database
@@ -221,7 +183,21 @@ services:
     ports:
       - 8080:8080                                                            # keycloak portal
     networks:
-      - kong30-net
+      - kong31-net
+
+  #
+  # open telemetry collection
+  #
+  jaeger:
+      image: docker.io/jaegertracing/all-in-one:1.39.0
+      environment:    
+        - COLLECTOR_OTLP_ENABLED=true
+      ports:
+        - 16686:16686                                                        # web browser gui
+ #       - 4317:4317                                                         # open telemetry grpc receiving port
+ #       - 4318:4318                                                         # open telemetry http receiving port
+      networks:
+      - kong31-net   
 
   #
   # post set up scripts for vault and kong gateway
@@ -235,7 +211,6 @@ services:
       - VAULT_API_URL=http://vault:8200
       - VAULT_KONG_OAUTH_CLIENT_ID=kong3-client-id                           # values that are put into vault
       - VAULT_KONG_OAUTH_CLIENT_SECRET=uQV39myf7re5kHj56Wt0oGR9gvaDuNqU      # values that are put into vault
-      - HONEYCOMB_API_KEY=${HONEYCOMB_API_KEY}                               # honeycomb api key for open telemetry
     entrypoint: [ "sh", "-c", "/home/deckuser/scripts/post-setup.sh"]        # override default entrypoint
     depends_on:
       kong-gateway-enterprise-control-plane:
@@ -243,7 +218,7 @@ services:
       vault:
         condition: service_started
     networks:
-      - kong30-net
+      - kong31-net
 
   #
   # container thats allows for adhoc interactions using Kong tooling
@@ -259,7 +234,7 @@ services:
       kong-gateway-enterprise-control-plane:
         condition: service_healthy
     networks:
-      - kong30-net
+      - kong31-net
        
   #
   # generate web traffic for kong proxy
@@ -275,7 +250,7 @@ services:
       kong-gateway-enterprise-data-plane:
         condition: service_healthy
     networks:
-      - kong30-net   
+      - kong31-net   
  
   #
   # web client to test websockets functionality
@@ -288,5 +263,5 @@ services:
     ports:
       - 9898:9898                                                            # web client tester port
     networks:
-      - kong30-net
+      - kong31-net
 
